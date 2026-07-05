@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #14110F;
+  --surface: #1C1815;
+  --surface-2: #241F1A;
+  --line: #332A21;
+  --line-strong: #4A3D2E;
+  --ink: #EDE6DC;
+  --ink-muted: #9C8F7E;
+  --gold: #C79A4B;
+  --gold-dim: #8A6A38;
+  --gold-bright: #DDB05F;
+  --green: #4C7A52;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-gold: var(--gold);
+  --color-gold-dim: var(--gold-dim);
+  --color-gold-bright: var(--gold-bright);
+  --color-green: var(--green);
+  --font-display: "Iowan Old Style", "Palatino Linotype", Georgia, "Noto Serif", serif;
+  --font-body: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-mono: "SFMono-Regular", "Cascadia Code", Consolas, "Liberation Mono", monospace;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+::selection {
+  background: rgba(199, 154, 75, 0.3);
+}
+
+/* subtle paper-grain texture on the background for the "ledger" feel */
+.grain-bg {
+  background-image:
+    radial-gradient(rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 3px 3px;
+}
