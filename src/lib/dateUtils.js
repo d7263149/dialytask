@@ -17,6 +17,18 @@ export function addDays(date, n) {
   return d;
 }
 
+// Inclusive list of "YYYY-MM-DD" keys from startKey to endKey.
+export function enumerateDateKeys(startKey, endKey) {
+  const keys = [];
+  let cursor = new Date(`${startKey}T00:00:00`);
+  const end = new Date(`${endKey}T00:00:00`);
+  while (cursor <= end) {
+    keys.push(toDateKey(cursor));
+    cursor = addDays(cursor, 1);
+  }
+  return keys;
+}
+
 export function getMonthMatrix(year, monthIndex) {
   // monthIndex: 0-11
   const firstDay = new Date(year, monthIndex, 1);
