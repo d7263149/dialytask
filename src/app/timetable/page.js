@@ -147,17 +147,23 @@ export default function TimetablePage() {
               </p>
             )}
 
+            {columns.length > 1 && (
+              <p className="sm:hidden text-ink-muted text-xs font-mono mb-2">
+                ← Table ko side me swipe karo aur time slots dekho →
+              </p>
+            )}
+
             <div className="overflow-x-auto">
               <table className="border-collapse min-w-max">
                 <thead>
                   <tr>
-                    <th className="sticky left-0 z-10 bg-surface p-2 text-left text-xs font-mono text-ink-muted uppercase border-b border-line w-28">
+                    <th className="sticky left-0 z-10 bg-surface p-2 text-left text-xs font-mono text-ink-muted uppercase border-b border-line w-24 sm:w-28">
                       Day
                     </th>
                     {columns.map((col, idx) => (
                       <th
                         key={col.id}
-                        className="p-1 border-b border-l border-line min-w-[150px]"
+                        className="p-1 border-b border-l border-line min-w-[120px] sm:min-w-[150px]"
                       >
                         <div className="flex items-center gap-1">
                           <input
