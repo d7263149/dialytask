@@ -7,6 +7,7 @@ const TABS = [
   { href: "/", label: "Daily Register" },
   { href: "/timetable", label: "Timetable" },
   { href: "/plans", label: "Plans" },
+  { href: "/clock", label: "Clock" },
   { href: "/settings", label: "Settings" },
 ];
 
