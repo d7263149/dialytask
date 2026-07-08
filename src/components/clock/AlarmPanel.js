@@ -3,22 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { startAlarmSound } from "@/lib/clockAudio";
 
-const STORAGE_KEY = "kdprotek_alarms";
-
-function loadAlarms() {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveAlarms(alarms) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(alarms));
-}
-
 function formatTime12h(time) {
   const [h, m] = time.split(":").map(Number);
   const hours12 = h % 12 === 0 ? 12 : h % 12;
@@ -28,27 +12,43 @@ function formatTime12h(time) {
 
 export default function AlarmPanel() {
   const [alarms, setAlarms] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
   const [newTime, setNewTime] = useState("07:00");
   const [newLabel, setNewLabel] = useState("");
+  const [adding, setAdding] = useState(false);
   const [ringingAlarm, setRingingAlarm] = useState(null);
   const stopSoundRef = useRef(null);
-  const lastFiredRef = useRef({}); // alarmId -> "HH:MM" last fired to avoid re-trigger in same minute
+  const lastFiredRef = useRef({}); // alarmId -> "YYYY-MM-DD HH:MM" last fired, so it rings once per day and repeats daily
 
   useEffect(() => {
-    setAlarms(loadAlarms());
+    async function init() {
+      setLoading(true);
+      const res = await fetch("/api/alarms");
+      const data = await res.json();
+      if (!res.ok) {
+        setErrorMsg(data.error);
+        setLoading(false);
+        return;
+      }
+      setAlarms(data.alarms || []);
+      setLoading(false);
+    }
+    init();
   }, []);
 
   useEffect(() => {
     const id = setInterval(() => {
       const now = new Date();
       const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      const fireKey = `${now.toDateString()} ${hhmm}`;
 
       setAlarms((current) => {
         const match = current.find(
-          (a) => a.enabled && a.time === hhmm && lastFiredRef.current[a.id] !== hhmm
+          (a) => a.enabled && a.time === hhmm && lastFiredRef.current[a.id] !== fireKey
         );
         if (match) {
-          lastFiredRef.current[match.id] = hhmm;
+          lastFiredRef.current[match.id] = fireKey;
           setRingingAlarm(match);
         }
         return current;
@@ -67,29 +67,49 @@ export default function AlarmPanel() {
     }
   }, [ringingAlarm]);
 
-  function persist(next) {
-    setAlarms(next);
-    saveAlarms(next);
-  }
-
-  function handleAdd() {
+  async function handleAdd() {
     if (!newTime) return;
-    const alarm = {
-      id: Date.now(),
-      time: newTime,
-      label: newLabel.trim(),
-      enabled: true,
-    };
-    persist([...alarms, alarm].sort((a, b) => a.time.localeCompare(b.time)));
+    setAdding(true);
+    setErrorMsg("");
+    const res = await fetch("/api/alarms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ time: newTime, label: newLabel }),
+    });
+    const data = await res.json();
+    setAdding(false);
+    if (!res.ok) {
+      setErrorMsg(data.error);
+      return;
+    }
+    setAlarms((prev) => [...prev, data.alarm].sort((a, b) => a.time.localeCompare(b.time)));
     setNewLabel("");
   }
 
-  function handleToggle(id) {
-    persist(alarms.map((a) => (a.id === id ? { ...a, enabled: !a.enabled } : a)));
+  async function handleToggle(alarm) {
+    const nextEnabled = !alarm.enabled;
+    setAlarms((prev) => prev.map((a) => (a.id === alarm.id ? { ...a, enabled: nextEnabled } : a)));
+    const res = await fetch(`/api/alarms/${alarm.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: nextEnabled }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      setErrorMsg(data.error);
+      setAlarms((prev) => prev.map((a) => (a.id === alarm.id ? { ...a, enabled: alarm.enabled } : a)));
+    }
   }
 
-  function handleDelete(id) {
-    persist(alarms.filter((a) => a.id !== id));
+  async function handleDelete(id) {
+    const prev = alarms;
+    setAlarms((current) => current.filter((a) => a.id !== id));
+    const res = await fetch(`/api/alarms/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json();
+      setErrorMsg(data.error);
+      setAlarms(prev);
+    }
   }
 
   function handleDismiss() {
@@ -119,6 +139,12 @@ export default function AlarmPanel() {
         </div>
       )}
 
+      {errorMsg && (
+        <div className="px-4 py-3 rounded-lg border border-red-800/50 bg-red-950/30 text-red-300 text-sm font-mono">
+          {errorMsg}
+        </div>
+      )}
+
       <div className="rounded-xl border border-line bg-surface p-5">
         <h3 className="font-display text-base text-ink mb-4">Naya alarm add karo</h3>
         <div className="flex flex-col sm:flex-row gap-3">
@@ -138,16 +164,19 @@ export default function AlarmPanel() {
           <button
             type="button"
             onClick={handleAdd}
-            className="px-4 py-2 rounded-md bg-gold text-surface font-mono text-sm hover:bg-gold-bright transition-colors whitespace-nowrap"
+            disabled={adding}
+            className="px-4 py-2 rounded-md bg-gold text-surface font-mono text-sm hover:bg-gold-bright transition-colors whitespace-nowrap disabled:opacity-40"
           >
-            Add alarm
+            {adding ? "Adding…" : "Add alarm"}
           </button>
         </div>
       </div>
 
       <div className="rounded-xl border border-line bg-surface p-5">
         <h3 className="font-display text-base text-ink mb-4">Alarms</h3>
-        {alarms.length === 0 ? (
+        {loading ? (
+          <p className="text-ink-muted font-mono text-sm">Loading…</p>
+        ) : alarms.length === 0 ? (
           <p className="text-ink-muted text-sm font-mono">Koi alarm set nahi hai.</p>
         ) : (
           <ul className="flex flex-col gap-3">
@@ -169,7 +198,7 @@ export default function AlarmPanel() {
                   type="button"
                   role="switch"
                   aria-checked={a.enabled}
-                  onClick={() => handleToggle(a.id)}
+                  onClick={() => handleToggle(a)}
                   className={`w-11 h-6 rounded-full relative transition-colors shrink-0 ${
                     a.enabled ? "bg-gold" : "bg-line-strong"
                   }`}
