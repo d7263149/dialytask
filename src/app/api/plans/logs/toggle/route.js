@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSessionUserId } from "@/lib/getSessionUser";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(request) {
   const uid = await getSessionUserId();
   if (!uid) return NextResponse.json({ error: "Not logged in" }, { status: 401 });

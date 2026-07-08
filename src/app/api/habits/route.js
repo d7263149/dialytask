@@ -3,6 +3,8 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSessionUserId } from "@/lib/getSessionUser";
 import { todayKey } from "@/lib/dateUtils";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request) {
   const uid = await getSessionUserId();
   if (!uid) return NextResponse.json({ error: "Not logged in" }, { status: 401 });

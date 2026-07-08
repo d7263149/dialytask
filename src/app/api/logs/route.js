@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSessionUserId } from "@/lib/getSessionUser";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/logs?date=YYYY-MM-DD           -> a single day's logs
 // GET /api/logs?start=YYYY-MM-DD&end=...  -> a date range's logs
 export async function GET(request) {

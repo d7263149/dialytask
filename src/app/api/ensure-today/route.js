@@ -3,6 +3,8 @@ import { getSessionUserId } from "@/lib/getSessionUser";
 import { toDateKey } from "@/lib/dateUtils";
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 export async function POST() {
   try {
     const uid = await getSessionUserId();

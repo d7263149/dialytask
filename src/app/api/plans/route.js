@@ -5,6 +5,8 @@ import { enumerateDateKeys } from "@/lib/dateUtils";
 
 const MAX_RANGE_DAYS = 366;
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const uid = await getSessionUserId();
   if (!uid) return NextResponse.json({ error: "Not logged in" }, { status: 401 });

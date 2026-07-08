@@ -4,6 +4,8 @@ import { getSessionUserId } from "@/lib/getSessionUser";
 
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const uid = await getSessionUserId();
   if (!uid) return NextResponse.json({ error: "Not logged in" }, { status: 401 });

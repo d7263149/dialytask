@@ -9,6 +9,8 @@ import {
   SESSION_COOKIE_OPTIONS,
 } from "@/lib/session";
 
+export const dynamic = "force-dynamic";
+
 const STARTER_HABITS = [
   { name: "Breakfast", emoji: "🍳", sort_order: 1 },
   { name: "Lunch", emoji: "🍽️", sort_order: 2 },

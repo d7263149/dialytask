@@ -9,6 +9,8 @@ import {
   SESSION_COOKIE_OPTIONS,
 } from "@/lib/session";
 
+export const dynamic = "force-dynamic";
+
 const GENERIC_ERROR = "Galat user id ya password.";
 
 export async function POST(request) {
