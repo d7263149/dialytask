@@ -1,4 +1,5 @@
 import "./globals.css";
+import GlobalClockWidget from "@/components/GlobalClockWidget";
 
 export const metadata = {
   title: "KD Protek — Daily Register",
@@ -8,7 +9,10 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col bg-bg text-ink font-body">{children}</body>
+      <body className="min-h-full flex flex-col bg-bg text-ink font-body">
+        <GlobalClockWidget />
+        {children}
+      </body>
     </html>
   );
 }

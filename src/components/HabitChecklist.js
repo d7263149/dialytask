@@ -19,9 +19,9 @@ export default function HabitChecklist({ habits, doneMap, onToggle, disabled }) 
               type="button"
               disabled={disabled}
               onClick={() => onToggle(h.id, !done)}
-              className={`group w-full flex items-center gap-4 px-4 py-3 rounded-lg border transition-all duration-200
+              className={`group w-full flex items-center gap-4 px-4 py-3.5 rounded-xl border transition-all duration-200
                 ${done
-                  ? "border-gold/60 bg-gold/[0.07]"
+                  ? "border-gold/60 bg-gold/[0.08] shadow-[0_2px_12px_rgba(199,154,75,0.08)]"
                   : "border-line bg-surface hover:border-gold/30 hover:bg-surface-2"
                 } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
             >
@@ -53,8 +53,8 @@ export default function HabitChecklist({ habits, doneMap, onToggle, disabled }) 
               <span className="text-xl leading-none">{h.emoji}</span>
 
               <span
-                className={`flex-1 text-left font-body text-base ${
-                  done ? "text-ink line-through decoration-gold/50" : "text-ink"
+                className={`flex-1 text-left font-body text-base tracking-wide ${
+                  done ? "text-ink-muted line-through decoration-gold/50" : "text-ink"
                 }`}
               >
                 {h.name}

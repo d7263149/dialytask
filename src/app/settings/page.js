@@ -2,12 +2,18 @@
 
 import { useEffect, useState } from "react";
 import NavBar from "@/components/NavBar";
+import AddHabitForm from "@/components/AddHabitForm";
+import EmojiPickerButton from "@/components/EmojiPickerButton";
 
 export default function SettingsPage() {
   const [habits, setHabits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editEmoji, setEditEmoji] = useState("✅");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -24,6 +30,52 @@ export default function SettingsPage() {
     }
     init();
   }, []);
+
+  async function handleAddHabit(name, emoji) {
+    setErrorMsg("");
+    const res = await fetch("/api/habits", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, emoji }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setErrorMsg(data.error);
+      return;
+    }
+    setHabits((prev) => [...prev, data.habit]);
+  }
+
+  function startEdit(habit) {
+    setEditingId(habit.id);
+    setEditName(habit.name);
+    setEditEmoji(habit.emoji);
+    setErrorMsg("");
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+  }
+
+  async function saveEdit(habit) {
+    if (!editName.trim()) return;
+    setSavingEdit(true);
+    setErrorMsg("");
+    const res = await fetch(`/api/habits/${habit.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: editName.trim(), emoji: editEmoji.trim() || "✅" }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setErrorMsg(data.error);
+      setSavingEdit(false);
+      return;
+    }
+    setHabits((prev) => prev.map((h) => (h.id === habit.id ? data.habit : h)));
+    setSavingEdit(false);
+    setEditingId(null);
+  }
 
   async function handleDelete(habit) {
     const confirmed = window.confirm(
@@ -55,8 +107,8 @@ export default function SettingsPage() {
           </p>
           <h1 className="font-display italic text-4xl md:text-5xl text-ink">Settings</h1>
           <p className="text-ink-muted text-sm mt-2 max-w-md">
-            Habits delete karo — aaj se aage checklist me nahi aayenge, lekin pichle
-            dino ka saved data (calendar, chart) affect nahi hoga.
+            Habits add/edit/delete karo — aaj se aage checklist me changes dikhenge,
+            lekin pichle dino ka saved data (calendar, chart) affect nahi hoga.
           </p>
         </header>
 
@@ -65,6 +117,11 @@ export default function SettingsPage() {
             {errorMsg}
           </div>
         )}
+
+        <div className="rounded-xl border border-line bg-surface p-5 max-w-xl mb-6">
+          <h3 className="font-display text-base text-ink mb-4">Nayi habit add karo</h3>
+          <AddHabitForm onAdd={handleAddHabit} />
+        </div>
 
         <div className="rounded-xl border border-line bg-surface p-5 max-w-xl">
           <h3 className="font-display text-base text-ink mb-4">Habits</h3>
@@ -75,23 +132,62 @@ export default function SettingsPage() {
             <p className="text-ink-muted text-sm font-mono">Koi habit nahi mila.</p>
           ) : (
             <ul className="flex flex-col gap-3">
-              {habits.map((h) => (
-                <li
-                  key={h.id}
-                  className="flex items-center gap-4 px-4 py-3 rounded-lg border border-line bg-surface-2"
-                >
-                  <span className="text-xl leading-none">{h.emoji}</span>
-                  <span className="flex-1 text-sm text-ink">{h.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(h)}
-                    disabled={deletingId === h.id}
-                    className="px-3 py-1.5 rounded-md border border-red-800/50 text-red-300 hover:bg-red-950/30 text-xs font-mono transition-colors disabled:opacity-40 cursor-pointer"
+              {habits.map((h) =>
+                editingId === h.id ? (
+                  <li
+                    key={h.id}
+                    className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 px-4 py-3 rounded-lg border border-gold/40 bg-surface-2"
                   >
-                    {deletingId === h.id ? "Deleting…" : "Delete"}
-                  </button>
-                </li>
-              ))}
+                    <input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="w-full sm:flex-1 bg-surface border border-line rounded-md px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-gold/40"
+                    />
+                    <div className="flex items-center gap-2">
+                      <EmojiPickerButton value={editEmoji} onChange={setEditEmoji} />
+                      <button
+                        type="button"
+                        onClick={() => saveEdit(h)}
+                        disabled={savingEdit || !editName.trim()}
+                        className="px-3 py-1.5 rounded-md bg-gold text-surface text-xs font-mono disabled:opacity-40 hover:bg-gold-bright transition-colors"
+                      >
+                        {savingEdit ? "Saving…" : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelEdit}
+                        disabled={savingEdit}
+                        className="px-3 py-1.5 rounded-md border border-line text-ink-muted hover:text-gold text-xs font-mono transition-colors disabled:opacity-40"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </li>
+                ) : (
+                  <li
+                    key={h.id}
+                    className="flex items-center gap-4 px-4 py-3 rounded-lg border border-line bg-surface-2"
+                  >
+                    <span className="text-xl leading-none">{h.emoji}</span>
+                    <span className="flex-1 text-sm text-ink">{h.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => startEdit(h)}
+                      className="px-3 py-1.5 rounded-md border border-line text-ink-muted hover:text-gold text-xs font-mono transition-colors cursor-pointer"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(h)}
+                      disabled={deletingId === h.id}
+                      className="px-3 py-1.5 rounded-md border border-red-800/50 text-red-300 hover:bg-red-950/30 text-xs font-mono transition-colors disabled:opacity-40 cursor-pointer"
+                    >
+                      {deletingId === h.id ? "Deleting…" : "Delete"}
+                    </button>
+                  </li>
+                )
+              )}
             </ul>
           )}
         </div>
