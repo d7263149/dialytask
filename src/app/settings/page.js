@@ -14,6 +14,9 @@ export default function SettingsPage() {
   const [editName, setEditName] = useState("");
   const [editEmoji, setEditEmoji] = useState("✅");
   const [savingEdit, setSavingEdit] = useState(false);
+  const [dragIndex, setDragIndex] = useState(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+  const [savingOrder, setSavingOrder] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -77,6 +80,63 @@ export default function SettingsPage() {
     setEditingId(null);
   }
 
+  function handleDragStart(index) {
+    setDragIndex(index);
+  }
+
+  function handleDragOver(e, index) {
+    e.preventDefault();
+    setDragOverIndex(index);
+    if (dragIndex === null || dragIndex === index) return;
+    setHabits((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(dragIndex, 1);
+      next.splice(index, 0, moved);
+      return next;
+    });
+    setDragIndex(index);
+  }
+
+  async function handleDrop() {
+    setDragIndex(null);
+    setDragOverIndex(null);
+    setErrorMsg("");
+    setSavingOrder(true);
+
+    const changed = habits
+      .map((h, i) => ({ h, i }))
+      .filter(({ h, i }) => h.sort_order !== i);
+
+    if (changed.length === 0) {
+      setSavingOrder(false);
+      return;
+    }
+
+    const results = await Promise.all(
+      changed.map(({ h, i }) =>
+        fetch(`/api/habits/${h.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sort_order: i }),
+        }).then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+      )
+    );
+    const failed = results.find((r) => !r.ok);
+    if (failed) {
+      setErrorMsg(failed.data.error);
+      setSavingOrder(false);
+      return;
+    }
+
+    setHabits((prev) => prev.map((h, i) => ({ ...h, sort_order: i })));
+    setSavingOrder(false);
+  }
+
+  function handleDragEnd() {
+    setDragIndex(null);
+    setDragOverIndex(null);
+  }
+
   async function handleDelete(habit) {
     const confirmed = window.confirm(
       `"${habit.name}" ko delete karo? Aaj se aage yeh checklist me nahi dikhega, lekin pichle dino ka saved data (calendar, chart, progress) waisa hi rahega.`
@@ -124,7 +184,13 @@ export default function SettingsPage() {
         </div>
 
         <div className="rounded-xl border border-line bg-surface p-5 max-w-xl">
-          <h3 className="font-display text-base text-ink mb-4">Habits</h3>
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="font-display text-base text-ink">Habits</h3>
+            {savingOrder && (
+              <span className="font-mono text-xs text-ink-muted">Order saving…</span>
+            )}
+          </div>
+          <p className="font-mono text-xs text-ink-muted mb-4">⠿ ko pakad kar drag karo order badalne ke liye</p>
 
           {loading ? (
             <p className="text-ink-muted font-mono text-sm">Loading…</p>
@@ -132,7 +198,7 @@ export default function SettingsPage() {
             <p className="text-ink-muted text-sm font-mono">Koi habit nahi mila.</p>
           ) : (
             <ul className="flex flex-col gap-3">
-              {habits.map((h) =>
+              {habits.map((h, index) =>
                 editingId === h.id ? (
                   <li
                     key={h.id}
@@ -166,8 +232,24 @@ export default function SettingsPage() {
                 ) : (
                   <li
                     key={h.id}
-                    className="flex items-center gap-4 px-4 py-3 rounded-lg border border-line bg-surface-2"
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDrop={handleDrop}
+                    className={`flex items-center gap-4 px-4 py-3 rounded-lg border bg-surface-2 transition-colors ${
+                      dragOverIndex === index && dragIndex !== index
+                        ? "border-gold/60"
+                        : "border-line"
+                    } ${dragIndex === index ? "opacity-50" : ""}`}
                   >
+                    <span
+                      draggable
+                      onDragStart={() => handleDragStart(index)}
+                      onDragEnd={handleDragEnd}
+                      aria-label="Drag to reorder"
+                      title="Drag to reorder"
+                      className="shrink-0 text-ink-muted hover:text-gold cursor-grab active:cursor-grabbing select-none text-sm tracking-widest"
+                    >
+                      ⠿
+                    </span>
                     <span className="text-xl leading-none">{h.emoji}</span>
                     <span className="flex-1 text-sm text-ink">{h.name}</span>
                     <button

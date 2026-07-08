@@ -7,14 +7,26 @@ export async function PATCH(request, { params }) {
   if (!uid) return NextResponse.json({ error: "Not logged in" }, { status: 401 });
 
   const { id } = await params;
-  const { name, emoji } = await request.json();
-  if (!name || !name.trim()) {
-    return NextResponse.json({ error: "Habit name zaroori hai." }, { status: 400 });
+  const { name, emoji, sort_order } = await request.json();
+
+  const updates = {};
+  if (name !== undefined) {
+    if (!name.trim()) {
+      return NextResponse.json({ error: "Habit name zaroori hai." }, { status: 400 });
+    }
+    updates.name = name.trim();
+    updates.emoji = (emoji || "✅").trim() || "✅";
+  }
+  if (sort_order !== undefined) {
+    updates.sort_order = sort_order;
+  }
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: "Kuch update karne ko nahi mila." }, { status: 400 });
   }
 
   const { data: habit, error } = await supabaseAdmin
     .from("habits")
-    .update({ name: name.trim(), emoji: (emoji || "✅").trim() || "✅" })
+    .update(updates)
     .eq("id", id)
     .eq("user_id", uid)
     .select()
