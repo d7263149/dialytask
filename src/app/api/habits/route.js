@@ -26,7 +26,7 @@ export async function POST(request) {
   const uid = await getSessionUserId();
   if (!uid) return NextResponse.json({ error: "Not logged in" }, { status: 401 });
 
-  const { name, emoji } = await request.json();
+  const { name, emoji, time_from, time_to } = await request.json();
   if (!name || !name.trim()) {
     return NextResponse.json({ error: "Habit name zaroori hai." }, { status: 400 });
   }
@@ -42,6 +42,8 @@ export async function POST(request) {
       user_id: uid,
       name: name.trim(),
       emoji: (emoji || "✅").trim() || "✅",
+      time_from: time_from || null,
+      time_to: time_to || null,
       sort_order: count || 0,
       active: true,
     })

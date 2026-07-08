@@ -1,5 +1,7 @@
 "use client";
 
+import { formatTime12 } from "@/lib/dateUtils";
+
 export default function HabitChecklist({ habits, doneMap, onToggle, disabled }) {
   if (!habits.length) {
     return (
@@ -59,6 +61,13 @@ export default function HabitChecklist({ habits, doneMap, onToggle, disabled }) 
               >
                 {h.name}
               </span>
+
+              {h.time_from && (
+                <span className="shrink-0 font-mono text-[11px] text-gold/80 whitespace-nowrap">
+                  {formatTime12(h.time_from)}
+                  {h.time_to ? ` – ${formatTime12(h.time_to)}` : ""}
+                </span>
+              )}
             </button>
           </li>
         );

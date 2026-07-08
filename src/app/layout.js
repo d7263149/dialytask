@@ -11,7 +11,9 @@ export default function RootLayout({ children }) {
     <html lang="en" className="h-full antialiased">
       <body className="min-h-full flex flex-col bg-bg text-ink font-body">
         <GlobalClockWidget />
-        {children}
+        <div id="page-content-wrap" className="flex flex-col flex-1 min-h-full">
+          {children}
+        </div>
       </body>
     </html>
   );

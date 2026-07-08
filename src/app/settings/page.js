@@ -4,6 +4,20 @@ import { useEffect, useState } from "react";
 import NavBar from "@/components/NavBar";
 import AddHabitForm from "@/components/AddHabitForm";
 import EmojiPickerButton from "@/components/EmojiPickerButton";
+import { formatTime12 } from "@/lib/dateUtils";
+
+const AUTO_ARRANGE_KEY = "kd_auto_arrange_habits";
+
+// Habits with a from-time sort earliest-first; habits with no time sort to
+// the end, keeping their existing relative order (stable sort).
+function sortByTime(list) {
+  return [...list].sort((a, b) => {
+    if (a.time_from && b.time_from) return a.time_from.localeCompare(b.time_from);
+    if (a.time_from && !b.time_from) return -1;
+    if (!a.time_from && b.time_from) return 1;
+    return 0;
+  });
+}
 
 export default function SettingsPage() {
   const [habits, setHabits] = useState([]);
@@ -13,10 +27,17 @@ export default function SettingsPage() {
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState("");
   const [editEmoji, setEditEmoji] = useState("✅");
+  const [editTimeFrom, setEditTimeFrom] = useState("");
+  const [editTimeTo, setEditTimeTo] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const [savingOrder, setSavingOrder] = useState(false);
+  const [autoArrange, setAutoArrange] = useState(false);
+
+  useEffect(() => {
+    setAutoArrange(localStorage.getItem(AUTO_ARRANGE_KEY) === "1");
+  }, []);
 
   useEffect(() => {
     async function init() {
@@ -34,25 +55,68 @@ export default function SettingsPage() {
     init();
   }, []);
 
-  async function handleAddHabit(name, emoji) {
+  // Persists whatever order `list` is currently in as each habit's sort_order
+  // (only PATCHes the ones that actually moved). Returns the list with
+  // sort_order values brought in sync, ready to setHabits().
+  async function persistOrder(list) {
+    setErrorMsg("");
+    setSavingOrder(true);
+
+    const changed = list.map((h, i) => ({ h, i })).filter(({ h, i }) => h.sort_order !== i);
+    if (changed.length === 0) {
+      setSavingOrder(false);
+      return list;
+    }
+
+    const results = await Promise.all(
+      changed.map(({ h, i }) =>
+        fetch(`/api/habits/${h.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sort_order: i }),
+        }).then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+      )
+    );
+    const failed = results.find((r) => !r.ok);
+    setSavingOrder(false);
+    if (failed) {
+      setErrorMsg(failed.data.error);
+      return list;
+    }
+    return list.map((h, i) => ({ ...h, sort_order: i }));
+  }
+
+  async function handleAutoArrangeToggle(next) {
+    setAutoArrange(next);
+    localStorage.setItem(AUTO_ARRANGE_KEY, next ? "1" : "0");
+    if (next) {
+      setHabits(await persistOrder(sortByTime(habits)));
+    }
+  }
+
+  async function handleAddHabit(name, emoji, timeFrom, timeTo) {
     setErrorMsg("");
     const res = await fetch("/api/habits", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, emoji }),
+      body: JSON.stringify({ name, emoji, time_from: timeFrom || null, time_to: timeTo || null }),
     });
     const data = await res.json();
     if (!res.ok) {
       setErrorMsg(data.error);
       return;
     }
-    setHabits((prev) => [...prev, data.habit]);
+    let next = [...habits, data.habit];
+    if (autoArrange) next = await persistOrder(sortByTime(next));
+    setHabits(next);
   }
 
   function startEdit(habit) {
     setEditingId(habit.id);
     setEditName(habit.name);
     setEditEmoji(habit.emoji);
+    setEditTimeFrom(habit.time_from || "");
+    setEditTimeTo(habit.time_to || "");
     setErrorMsg("");
   }
 
@@ -67,7 +131,12 @@ export default function SettingsPage() {
     const res = await fetch(`/api/habits/${habit.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: editName.trim(), emoji: editEmoji.trim() || "✅" }),
+      body: JSON.stringify({
+        name: editName.trim(),
+        emoji: editEmoji.trim() || "✅",
+        time_from: editTimeFrom || null,
+        time_to: editTimeTo || null,
+      }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -75,16 +144,20 @@ export default function SettingsPage() {
       setSavingEdit(false);
       return;
     }
-    setHabits((prev) => prev.map((h) => (h.id === habit.id ? data.habit : h)));
+    let next = habits.map((h) => (h.id === habit.id ? data.habit : h));
+    if (autoArrange) next = await persistOrder(sortByTime(next));
+    setHabits(next);
     setSavingEdit(false);
     setEditingId(null);
   }
 
   function handleDragStart(index) {
+    if (autoArrange) return;
     setDragIndex(index);
   }
 
   function handleDragOver(e, index) {
+    if (autoArrange) return;
     e.preventDefault();
     setDragOverIndex(index);
     if (dragIndex === null || dragIndex === index) return;
@@ -98,38 +171,10 @@ export default function SettingsPage() {
   }
 
   async function handleDrop() {
+    if (autoArrange) return;
     setDragIndex(null);
     setDragOverIndex(null);
-    setErrorMsg("");
-    setSavingOrder(true);
-
-    const changed = habits
-      .map((h, i) => ({ h, i }))
-      .filter(({ h, i }) => h.sort_order !== i);
-
-    if (changed.length === 0) {
-      setSavingOrder(false);
-      return;
-    }
-
-    const results = await Promise.all(
-      changed.map(({ h, i }) =>
-        fetch(`/api/habits/${h.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sort_order: i }),
-        }).then((res) => res.json().then((data) => ({ ok: res.ok, data })))
-      )
-    );
-    const failed = results.find((r) => !r.ok);
-    if (failed) {
-      setErrorMsg(failed.data.error);
-      setSavingOrder(false);
-      return;
-    }
-
-    setHabits((prev) => prev.map((h, i) => ({ ...h, sort_order: i })));
-    setSavingOrder(false);
+    setHabits(await persistOrder(habits));
   }
 
   function handleDragEnd() {
@@ -190,7 +235,35 @@ export default function SettingsPage() {
               <span className="font-mono text-xs text-ink-muted">Order saving…</span>
             )}
           </div>
-          <p className="font-mono text-xs text-ink-muted mb-4">⠿ ko pakad kar drag karo order badalne ke liye</p>
+          <p className="font-mono text-xs text-ink-muted mb-4">
+            {autoArrange
+              ? "Auto-arrange ON hai — order start time ke hisaab se apne aap set hota hai"
+              : "⠿ ko pakad kar drag karo order badalne ke liye"}
+          </p>
+
+          <div className="flex items-center justify-between gap-4 mb-4 px-4 py-3 rounded-lg border border-line bg-surface-2">
+            <div>
+              <p className="text-sm text-ink">Auto-arrange by time</p>
+              <p className="font-mono text-[11px] text-ink-muted mt-0.5">
+                On karne par habits unke start time (from) ke hisaab se apne aap arrange ho jayengi
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={autoArrange}
+              onClick={() => handleAutoArrangeToggle(!autoArrange)}
+              className={`w-11 h-6 rounded-full relative transition-colors shrink-0 cursor-pointer ${
+                autoArrange ? "bg-gold" : "bg-line-strong"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-ink transition-transform ${
+                  autoArrange ? "translate-x-5" : "translate-x-0.5"
+                }`}
+              />
+            </button>
+          </div>
 
           {loading ? (
             <p className="text-ink-muted font-mono text-sm">Loading…</p>
@@ -202,31 +275,49 @@ export default function SettingsPage() {
                 editingId === h.id ? (
                   <li
                     key={h.id}
-                    className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 px-4 py-3 rounded-lg border border-gold/40 bg-surface-2"
+                    className="flex flex-col gap-2 px-4 py-3 rounded-lg border border-gold/40 bg-surface-2"
                   >
-                    <input
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      className="w-full sm:flex-1 bg-surface border border-line rounded-md px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-gold/40"
-                    />
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                      <input
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="w-full sm:flex-1 bg-surface border border-line rounded-md px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-gold/40"
+                      />
+                      <div className="flex items-center gap-2">
+                        <EmojiPickerButton value={editEmoji} onChange={setEditEmoji} />
+                        <button
+                          type="button"
+                          onClick={() => saveEdit(h)}
+                          disabled={savingEdit || !editName.trim()}
+                          className="px-3 py-1.5 rounded-md bg-gold text-surface text-xs font-mono disabled:opacity-40 hover:bg-gold-bright transition-colors"
+                        >
+                          {savingEdit ? "Saving…" : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelEdit}
+                          disabled={savingEdit}
+                          className="px-3 py-1.5 rounded-md border border-line text-ink-muted hover:text-gold text-xs font-mono transition-colors disabled:opacity-40"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
                     <div className="flex items-center gap-2">
-                      <EmojiPickerButton value={editEmoji} onChange={setEditEmoji} />
-                      <button
-                        type="button"
-                        onClick={() => saveEdit(h)}
-                        disabled={savingEdit || !editName.trim()}
-                        className="px-3 py-1.5 rounded-md bg-gold text-surface text-xs font-mono disabled:opacity-40 hover:bg-gold-bright transition-colors"
-                      >
-                        {savingEdit ? "Saving…" : "Save"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={cancelEdit}
-                        disabled={savingEdit}
-                        className="px-3 py-1.5 rounded-md border border-line text-ink-muted hover:text-gold text-xs font-mono transition-colors disabled:opacity-40"
-                      >
-                        Cancel
-                      </button>
+                      <span className="font-mono text-xs text-ink-muted shrink-0">Time (optional)</span>
+                      <input
+                        type="time"
+                        value={editTimeFrom}
+                        onChange={(e) => setEditTimeFrom(e.target.value)}
+                        className="bg-surface border border-line rounded-md px-2 py-1.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-gold/40"
+                      />
+                      <span className="text-ink-muted text-xs">to</span>
+                      <input
+                        type="time"
+                        value={editTimeTo}
+                        onChange={(e) => setEditTimeTo(e.target.value)}
+                        className="bg-surface border border-line rounded-md px-2 py-1.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-gold/40"
+                      />
                     </div>
                   </li>
                 ) : (
@@ -241,17 +332,27 @@ export default function SettingsPage() {
                     } ${dragIndex === index ? "opacity-50" : ""}`}
                   >
                     <span
-                      draggable
+                      draggable={!autoArrange}
                       onDragStart={() => handleDragStart(index)}
                       onDragEnd={handleDragEnd}
                       aria-label="Drag to reorder"
-                      title="Drag to reorder"
-                      className="shrink-0 text-ink-muted hover:text-gold cursor-grab active:cursor-grabbing select-none text-sm tracking-widest"
+                      title={autoArrange ? "Auto-arrange ON — manual drag disabled" : "Drag to reorder"}
+                      className={`shrink-0 select-none text-sm tracking-widest ${
+                        autoArrange
+                          ? "text-ink-muted/30 cursor-not-allowed"
+                          : "text-ink-muted hover:text-gold cursor-grab active:cursor-grabbing"
+                      }`}
                     >
                       ⠿
                     </span>
                     <span className="text-xl leading-none">{h.emoji}</span>
                     <span className="flex-1 text-sm text-ink">{h.name}</span>
+                    {h.time_from && (
+                      <span className="font-mono text-xs text-gold whitespace-nowrap">
+                        {formatTime12(h.time_from)}
+                        {h.time_to ? ` – ${formatTime12(h.time_to)}` : ""}
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={() => startEdit(h)}

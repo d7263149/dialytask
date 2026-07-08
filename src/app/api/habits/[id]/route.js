@@ -7,7 +7,7 @@ export async function PATCH(request, { params }) {
   if (!uid) return NextResponse.json({ error: "Not logged in" }, { status: 401 });
 
   const { id } = await params;
-  const { name, emoji, sort_order } = await request.json();
+  const { name, emoji, time_from, time_to, sort_order } = await request.json();
 
   const updates = {};
   if (name !== undefined) {
@@ -16,6 +16,8 @@ export async function PATCH(request, { params }) {
     }
     updates.name = name.trim();
     updates.emoji = (emoji || "✅").trim() || "✅";
+    updates.time_from = time_from || null;
+    updates.time_to = time_to || null;
   }
   if (sort_order !== undefined) {
     updates.sort_order = sort_order;

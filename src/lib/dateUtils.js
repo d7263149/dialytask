@@ -60,3 +60,14 @@ export const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export const FULL_WEEKDAY_LABELS = [
   "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
 ];
+
+// "HH:MM" (24-hour, matches <input type="time"> value) -> "h:mm AM/PM"
+export function formatTime12(hhmm) {
+  if (!hhmm) return "";
+  const [hStr, mStr] = hhmm.split(":");
+  const h24 = parseInt(hStr, 10);
+  if (Number.isNaN(h24)) return "";
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  const ampm = h24 >= 12 ? "PM" : "AM";
+  return `${h12}:${mStr} ${ampm}`;
+}

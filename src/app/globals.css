@@ -61,3 +61,13 @@ body {
   animation: heartbeat 1.4s ease-in-out infinite;
   transform-origin: center;
 }
+
+/* habit "from time" reminder — blinks the whole page content like a slow heartbeat/breath */
+@keyframes page-reminder-blink {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.45) saturate(1.15); }
+}
+
+.reminder-blink {
+  animation: page-reminder-blink 1s ease-in-out infinite;
+}
