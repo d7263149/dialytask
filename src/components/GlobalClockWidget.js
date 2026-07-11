@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { playBeep } from "@/lib/clockAudio";
 import { formatTime12 } from "@/lib/dateUtils";
 import AnalogClock from "./AnalogClock";
@@ -26,7 +26,7 @@ const POS_KEY = "kd_clock_widget_pos";
 const SCALE_KEY = "kd_clock_widget_scale";
 const MODE_KEY = "kd_clock_widget_mode";
 const MIN_SCALE = 0.75;
-const MAX_SCALE = 1.75;
+const MAX_SCALE = 2;
 
 export default function GlobalClockWidget() {
   const [now, setNow] = useState(null);
@@ -36,6 +36,7 @@ export default function GlobalClockWidget() {
   const [mode, setMode] = useState("digital"); // digital | analog
   const [scale, setScale] = useState(1);
   const [pos, setPos] = useState(null); // {top,left} px once dragged; null = default top-right corner
+  const [fullscreen, setFullscreen] = useState(false);
 
   const widgetRef = useRef(null);
   const dragRef = useRef(null);
@@ -146,23 +147,74 @@ export default function GlobalClockWidget() {
     return () => clearInterval(id);
   }, [status]);
 
-  // --- Drag to move -----------------------------------------------------
-  const handleDragMove = useCallback((e) => {
-    if (!dragRef.current) return;
+  // --- Fullscreen (like F11): real Fullscreen API + a big clock overlay ---
+  function exitFullscreen() {
+    if (document.fullscreenElement && document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    }
+    setFullscreen(false);
+  }
+
+  async function enterFullscreen() {
+    try {
+      if (document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch {
+      // blocked (iframe / permissions) — still show the big overlay
+    }
+    setFullscreen(true);
+  }
+
+  useEffect(() => {
+    function onFsChange() {
+      if (!document.fullscreenElement) setFullscreen(false);
+    }
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
+
+  useEffect(() => {
+    if (!fullscreen) return;
+    function onKey(e) {
+      if (e.key === "Escape") exitFullscreen();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fullscreen]);
+
+  // --- Drag to move — uses Pointer Capture so tracking never drops even if
+  // the pointer moves fast off the tiny handle. ---
+  function handleDragStart(e) {
+    const el = widgetRef.current;
+    if (!el) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const rect = el.getBoundingClientRect();
+    dragRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, startTop: rect.top, startLeft: rect.left };
+  }
+
+  function handleDragMove(e) {
+    if (!dragRef.current || e.pointerId !== dragRef.current.pointerId) return;
+    const el = widgetRef.current;
+    const rect = el?.getBoundingClientRect();
+    const w = rect?.width ?? 200;
+    const h = rect?.height ?? 40;
     const dx = e.clientX - dragRef.current.startX;
     const dy = e.clientY - dragRef.current.startY;
-    const el = widgetRef.current;
-    const w = el?.offsetWidth ?? 200;
-    const h = el?.offsetHeight ?? 40;
     const nextLeft = Math.min(Math.max(0, dragRef.current.startLeft + dx), window.innerWidth - w);
     const nextTop = Math.min(Math.max(0, dragRef.current.startTop + dy), window.innerHeight - h);
     setPos({ top: nextTop, left: nextLeft });
-  }, []);
+  }
 
-  const handleDragEnd = useCallback(() => {
+  function handleDragEnd(e) {
+    if (!dragRef.current) return;
+    try {
+      e.currentTarget.releasePointerCapture(dragRef.current.pointerId);
+    } catch {
+      // already released
+    }
     dragRef.current = null;
-    window.removeEventListener("pointermove", handleDragMove);
-    window.removeEventListener("pointerup", handleDragEnd);
     setPos((p) => {
       try {
         if (p) localStorage.setItem(POS_KEY, JSON.stringify(p));
@@ -171,29 +223,32 @@ export default function GlobalClockWidget() {
       }
       return p;
     });
-  }, [handleDragMove]);
-
-  function handleDragStart(e) {
-    const el = widgetRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    dragRef.current = { startX: e.clientX, startY: e.clientY, startTop: rect.top, startLeft: rect.left };
-    window.addEventListener("pointermove", handleDragMove);
-    window.addEventListener("pointerup", handleDragEnd);
   }
 
-  // --- Drag to resize -----------------------------------------------------
-  const handleResizeMove = useCallback((e) => {
-    if (!resizeRef.current) return;
-    const delta = e.clientX - resizeRef.current.startX + (e.clientY - resizeRef.current.startY);
+  // --- Drag to resize — same Pointer Capture approach, bigger hit target ---
+  function handleResizeStart(e) {
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    resizeRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, startScale: scale };
+  }
+
+  function handleResizeMove(e) {
+    if (!resizeRef.current || e.pointerId !== resizeRef.current.pointerId) return;
+    const dx = e.clientX - resizeRef.current.startX;
+    const dy = e.clientY - resizeRef.current.startY;
+    const delta = dx + dy;
     const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, resizeRef.current.startScale + delta / 150));
     setScale(next);
-  }, []);
+  }
 
-  const handleResizeEnd = useCallback(() => {
+  function handleResizeEnd(e) {
+    if (!resizeRef.current) return;
+    try {
+      e.currentTarget.releasePointerCapture(resizeRef.current.pointerId);
+    } catch {
+      // already released
+    }
     resizeRef.current = null;
-    window.removeEventListener("pointermove", handleResizeMove);
-    window.removeEventListener("pointerup", handleResizeEnd);
     setScale((s) => {
       try {
         localStorage.setItem(SCALE_KEY, String(s));
@@ -202,13 +257,6 @@ export default function GlobalClockWidget() {
       }
       return s;
     });
-  }, [handleResizeMove]);
-
-  function handleResizeStart(e) {
-    e.stopPropagation();
-    resizeRef.current = { startX: e.clientX, startScale: scale };
-    window.addEventListener("pointermove", handleResizeMove);
-    window.addEventListener("pointerup", handleResizeEnd);
   }
 
   function toggleMode() {
@@ -229,100 +277,165 @@ export default function GlobalClockWidget() {
 
   const widgetPosStyle = pos ? { top: pos.top, left: pos.left } : { top: 12, right: 12 };
 
+  const stopwatchButtons = (big) => {
+    const size = big ? "w-12 h-12 text-lg" : "w-6 h-6 text-[10px]";
+    return (
+      <>
+        {(status === "idle" || status === "paused") && (
+          <button
+            type="button"
+            onClick={() => setStatus("running")}
+            aria-label={status === "paused" ? "Resume timer" : "Start timer"}
+            className={`${size} flex items-center justify-center rounded-full border border-gold/50 text-gold hover:bg-gold/10 transition-colors leading-none cursor-pointer`}
+          >
+            ▶
+          </button>
+        )}
+        {status === "running" && (
+          <button
+            type="button"
+            onClick={() => setStatus("paused")}
+            aria-label="Pause timer"
+            className={`${size} flex items-center justify-center rounded-full border border-gold/50 text-gold hover:bg-gold/10 transition-colors leading-none cursor-pointer`}
+          >
+            ⏸
+          </button>
+        )}
+        {status === "paused" && (
+          <button
+            type="button"
+            onClick={() => {
+              setSeconds(0);
+              setStatus("idle");
+            }}
+            aria-label="Restart timer"
+            className={`${size} flex items-center justify-center rounded-full border border-line-strong text-ink-muted hover:text-gold hover:border-gold/50 transition-colors leading-none cursor-pointer`}
+          >
+            ↺
+          </button>
+        )}
+      </>
+    );
+  };
+
   return (
     <>
-      <div
-        ref={widgetRef}
-        style={{
-          ...widgetPosStyle,
-          transform: `scale(${scale})`,
-          transformOrigin: pos ? "top left" : "top right",
-        }}
-        className={`fixed z-40 flex flex-col gap-2 border border-line bg-surface/90 backdrop-blur px-3 py-1.5 shadow-[0_4px_16px_rgba(0,0,0,0.3)] ${
-          mode === "analog" ? "rounded-2xl items-center" : "rounded-full"
-        }`}
-      >
-        <div className="flex items-center gap-2 w-full">
-          <span
-            onPointerDown={handleDragStart}
-            aria-label="Drag to move"
-            title="Drag to move"
-            className="shrink-0 cursor-grab active:cursor-grabbing select-none text-ink-muted hover:text-gold text-xs tracking-widest touch-none"
+      {fullscreen && (
+        <div className="fixed inset-0 z-[60] bg-bg flex flex-col items-center justify-center gap-10 p-6">
+          <button
+            type="button"
+            onClick={exitFullscreen}
+            aria-label="Exit fullscreen"
+            title="Exit fullscreen (Esc)"
+            className="absolute top-6 right-6 w-10 h-10 rounded-full border border-line-strong text-ink-muted hover:text-gold hover:border-gold/50 flex items-center justify-center text-lg transition-colors cursor-pointer"
           >
-            ⠿
-          </span>
+            ✕
+          </button>
+
+          {mode === "analog" ? (
+            <AnalogClock now={now} size={280} />
+          ) : (
+            <div className="font-display text-6xl sm:text-8xl md:text-9xl text-ink tabular-nums flex items-baseline gap-2 sm:gap-4">
+              <span>{pad(hours12)}</span>
+              <span className="text-gold">:</span>
+              <span>{pad(now?.getMinutes() ?? 0)}</span>
+              <span className="text-gold">:</span>
+              <span className="text-ink-muted text-4xl sm:text-6xl md:text-7xl">{pad(now?.getSeconds() ?? 0)}</span>
+              <span className="text-xl sm:text-3xl text-ink-muted ml-2">{ampm}</span>
+            </div>
+          )}
+
+          <div className="flex items-center gap-4">
+            <span className="font-mono text-xl sm:text-2xl text-ink tabular-nums">{formatStopwatch(seconds)}</span>
+            {stopwatchButtons(true)}
+          </div>
 
           <button
             type="button"
             onClick={toggleMode}
-            aria-label={mode === "digital" ? "Switch to analog clock" : "Switch to digital clock"}
-            title={mode === "digital" ? "Switch to analog clock" : "Switch to digital clock"}
-            className="shrink-0 text-[11px] text-ink-muted hover:text-gold cursor-pointer"
+            className="font-mono text-xs text-ink-muted hover:text-gold underline underline-offset-4 transition-colors cursor-pointer"
           >
-            {mode === "digital" ? "🕐" : "🔢"}
+            Switch to {mode === "digital" ? "analog" : "digital"}
           </button>
+        </div>
+      )}
 
-          {mode === "digital" && (
-            <>
-              <span className="font-mono text-xs sm:text-sm text-gold tabular-nums whitespace-nowrap">
-                {now ? `${pad(hours12)}:${pad(now.getMinutes())}:${pad(now.getSeconds())} ${ampm}` : "--:--:-- --"}
-              </span>
-              <span className="w-px h-4 bg-line shrink-0" />
-            </>
-          )}
+      {!fullscreen && (
+        <div
+          ref={widgetRef}
+          style={{
+            ...widgetPosStyle,
+            transform: `scale(${scale})`,
+            transformOrigin: pos ? "top left" : "top right",
+          }}
+          className={`fixed z-40 flex flex-col gap-2 border border-line bg-surface/90 backdrop-blur px-3 py-1.5 shadow-[0_4px_16px_rgba(0,0,0,0.3)] ${
+            mode === "analog" ? "rounded-2xl items-center" : "rounded-full"
+          }`}
+        >
+          <div className="flex items-center gap-2 w-full">
+            <span
+              onPointerDown={handleDragStart}
+              onPointerMove={handleDragMove}
+              onPointerUp={handleDragEnd}
+              onPointerCancel={handleDragEnd}
+              aria-label="Drag to move"
+              title="Drag to move"
+              className="shrink-0 cursor-grab active:cursor-grabbing select-none text-ink-muted hover:text-gold text-xs tracking-widest touch-none"
+            >
+              ⠿
+            </span>
 
-          <span className="font-mono text-xs sm:text-sm text-ink tabular-nums whitespace-nowrap">
-            {formatStopwatch(seconds)}
-          </span>
+            <button
+              type="button"
+              onClick={toggleMode}
+              aria-label={mode === "digital" ? "Switch to analog clock" : "Switch to digital clock"}
+              title={mode === "digital" ? "Switch to analog clock" : "Switch to digital clock"}
+              className="shrink-0 text-[11px] text-ink-muted hover:text-gold cursor-pointer"
+            >
+              {mode === "digital" ? "🕐" : "🔢"}
+            </button>
 
-          <div className="flex items-center gap-1 shrink-0 ml-auto">
-            {(status === "idle" || status === "paused") && (
-              <button
-                type="button"
-                onClick={() => setStatus("running")}
-                aria-label={status === "paused" ? "Resume timer" : "Start timer"}
-                className="w-6 h-6 flex items-center justify-center rounded-full border border-gold/50 text-gold hover:bg-gold/10 transition-colors text-[10px] leading-none cursor-pointer"
-              >
-                ▶
-              </button>
+            {mode === "digital" && (
+              <>
+                <span className="font-mono text-xs sm:text-sm text-gold tabular-nums whitespace-nowrap">
+                  {now ? `${pad(hours12)}:${pad(now.getMinutes())}:${pad(now.getSeconds())} ${ampm}` : "--:--:-- --"}
+                </span>
+                <span className="w-px h-4 bg-line shrink-0" />
+              </>
             )}
-            {status === "running" && (
-              <button
-                type="button"
-                onClick={() => setStatus("paused")}
-                aria-label="Pause timer"
-                className="w-6 h-6 flex items-center justify-center rounded-full border border-gold/50 text-gold hover:bg-gold/10 transition-colors text-[10px] leading-none cursor-pointer"
-              >
-                ⏸
-              </button>
-            )}
-            {status === "paused" && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSeconds(0);
-                  setStatus("idle");
-                }}
-                aria-label="Restart timer"
-                className="w-6 h-6 flex items-center justify-center rounded-full border border-line-strong text-ink-muted hover:text-gold hover:border-gold/50 transition-colors text-[10px] leading-none cursor-pointer"
-              >
-                ↺
-              </button>
-            )}
+
+            <span className="font-mono text-xs sm:text-sm text-ink tabular-nums whitespace-nowrap">
+              {formatStopwatch(seconds)}
+            </span>
+
+            <div className="flex items-center gap-1 shrink-0 ml-auto">{stopwatchButtons(false)}</div>
+
+            <button
+              type="button"
+              onClick={enterFullscreen}
+              aria-label="Fullscreen clock"
+              title="Fullscreen clock"
+              className="shrink-0 text-[11px] text-ink-muted hover:text-gold cursor-pointer"
+            >
+              ⛶
+            </button>
+
+            <span
+              onPointerDown={handleResizeStart}
+              onPointerMove={handleResizeMove}
+              onPointerUp={handleResizeEnd}
+              onPointerCancel={handleResizeEnd}
+              aria-label="Drag to resize"
+              title="Drag to resize"
+              className="shrink-0 w-4 h-4 rounded-full border border-gold/50 flex items-center justify-center select-none text-ink-muted hover:text-gold hover:border-gold text-[9px] cursor-nwse-resize touch-none"
+            >
+              ⤡
+            </span>
           </div>
 
-          <span
-            onPointerDown={handleResizeStart}
-            aria-label="Drag to resize"
-            title="Drag to resize"
-            className="shrink-0 cursor-nwse-resize select-none text-ink-muted hover:text-gold text-[11px] touch-none"
-          >
-            ⤡
-          </span>
+          {mode === "analog" && <AnalogClock now={now} size={68} />}
         </div>
-
-        {mode === "analog" && <AnalogClock now={now} size={68} />}
-      </div>
+      )}
 
       {reminder && (
         <button
