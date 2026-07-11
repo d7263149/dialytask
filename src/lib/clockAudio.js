@@ -44,3 +44,43 @@ export function startAlarmSound({ freq = 880, onBeep, intervalMs = 600 } = {}) {
   }, intervalMs);
   return () => clearInterval(id);
 }
+
+// Named alarm "voices" — each is a short synthesized pattern (no audio
+// files), selectable per-alarm and repeated every `intervalMs` while ringing.
+export const ALARM_SOUNDS = [
+  { key: "classic", label: "Classic Beep" },
+  { key: "chime", label: "Chime" },
+  { key: "digital", label: "Digital Alert" },
+  { key: "bell", label: "Gentle Bell" },
+];
+
+const SOUND_PLAYERS = {
+  classic: () => {
+    playBeep({ freq: 1000, duration: 0.18, volume: 0.25 });
+  },
+  chime: () => {
+    playBeep({ freq: 784, duration: 0.16, volume: 0.22 }); // G5
+    setTimeout(() => playBeep({ freq: 988, duration: 0.22, volume: 0.22 }), 160); // B5
+  },
+  digital: () => {
+    playBeep({ freq: 1300, duration: 0.07, volume: 0.25 });
+    setTimeout(() => playBeep({ freq: 1300, duration: 0.07, volume: 0.25 }), 120);
+    setTimeout(() => playBeep({ freq: 1300, duration: 0.07, volume: 0.25 }), 240);
+  },
+  bell: () => {
+    playBeep({ freq: 660, duration: 0.55, volume: 0.16 });
+    setTimeout(() => playBeep({ freq: 990, duration: 0.45, volume: 0.09 }), 30);
+  },
+};
+
+export function playAlarmVoice(soundKey) {
+  (SOUND_PLAYERS[soundKey] || SOUND_PLAYERS.classic)();
+}
+
+// Same shape as startAlarmSound but plays a named voice pattern on repeat.
+export function startNamedAlarmSound(soundKey, intervalMs = 900) {
+  const player = SOUND_PLAYERS[soundKey] || SOUND_PLAYERS.classic;
+  player();
+  const id = setInterval(player, intervalMs);
+  return () => clearInterval(id);
+}

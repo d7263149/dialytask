@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSessionUserId } from "@/lib/getSessionUser";
 
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const VALID_SOUNDS = ["classic", "chime", "digital", "bell"];
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,7 @@ export async function POST(request) {
   const uid = await getSessionUserId();
   if (!uid) return NextResponse.json({ error: "Not logged in" }, { status: 401 });
 
-  const { time, label } = await request.json();
+  const { time, label, sound } = await request.json();
   if (typeof time !== "string" || !TIME_RE.test(time)) {
     return NextResponse.json({ error: "Time HH:MM format me hona chahiye." }, { status: 400 });
   }
@@ -35,6 +36,7 @@ export async function POST(request) {
       user_id: uid,
       time,
       label: (label || "").trim(),
+      sound: VALID_SOUNDS.includes(sound) ? sound : "classic",
       enabled: true,
     })
     .select()

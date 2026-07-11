@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { startAlarmSound } from "@/lib/clockAudio";
+import { ALARM_SOUNDS, playAlarmVoice, startNamedAlarmSound } from "@/lib/clockAudio";
 
 function formatTime12h(time) {
   const [h, m] = time.split(":").map(Number);
@@ -10,12 +10,17 @@ function formatTime12h(time) {
   return `${String(hours12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${ampm}`;
 }
 
+function soundLabel(key) {
+  return ALARM_SOUNDS.find((s) => s.key === key)?.label || "Classic Beep";
+}
+
 export default function AlarmPanel() {
   const [alarms, setAlarms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
   const [newTime, setNewTime] = useState("07:00");
   const [newLabel, setNewLabel] = useState("");
+  const [newSound, setNewSound] = useState("classic");
   const [adding, setAdding] = useState(false);
   const [ringingAlarm, setRingingAlarm] = useState(null);
   const stopSoundRef = useRef(null);
@@ -59,7 +64,7 @@ export default function AlarmPanel() {
 
   useEffect(() => {
     if (ringingAlarm && !stopSoundRef.current) {
-      stopSoundRef.current = startAlarmSound({ freq: 1000, intervalMs: 500 });
+      stopSoundRef.current = startNamedAlarmSound(ringingAlarm.sound || "classic", 900);
     }
     if (!ringingAlarm && stopSoundRef.current) {
       stopSoundRef.current();
@@ -74,7 +79,7 @@ export default function AlarmPanel() {
     const res = await fetch("/api/alarms", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ time: newTime, label: newLabel }),
+      body: JSON.stringify({ time: newTime, label: newLabel, sound: newSound }),
     });
     const data = await res.json();
     setAdding(false);
@@ -98,6 +103,23 @@ export default function AlarmPanel() {
       const data = await res.json();
       setErrorMsg(data.error);
       setAlarms((prev) => prev.map((a) => (a.id === alarm.id ? { ...a, enabled: alarm.enabled } : a)));
+    }
+  }
+
+  async function handleChangeSound(alarm) {
+    const currentIndex = ALARM_SOUNDS.findIndex((s) => s.key === (alarm.sound || "classic"));
+    const next = ALARM_SOUNDS[(currentIndex + 1) % ALARM_SOUNDS.length];
+    playAlarmVoice(next.key);
+    setAlarms((prev) => prev.map((a) => (a.id === alarm.id ? { ...a, sound: next.key } : a)));
+    const res = await fetch(`/api/alarms/${alarm.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sound: next.key }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      setErrorMsg(data.error);
+      setAlarms((prev) => prev.map((a) => (a.id === alarm.id ? { ...a, sound: alarm.sound } : a)));
     }
   }
 
@@ -127,6 +149,7 @@ export default function AlarmPanel() {
               {ringingAlarm.label && (
                 <p className="text-ink-muted text-sm mt-1">{ringingAlarm.label}</p>
               )}
+              <p className="font-mono text-xs text-gold mt-1">{soundLabel(ringingAlarm.sound)}</p>
             </div>
             <button
               type="button"
@@ -147,7 +170,7 @@ export default function AlarmPanel() {
 
       <div className="rounded-xl border border-line bg-surface p-5">
         <h3 className="font-display text-base text-ink mb-4">Naya alarm add karo</h3>
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex flex-col sm:flex-row gap-3 mb-3">
           <input
             type="time"
             value={newTime}
@@ -169,6 +192,27 @@ export default function AlarmPanel() {
           >
             {adding ? "Adding…" : "Add alarm"}
           </button>
+        </div>
+
+        <p className="font-mono text-xs text-ink-muted mb-2">Alarm sound</p>
+        <div className="flex flex-wrap gap-2">
+          {ALARM_SOUNDS.map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              onClick={() => {
+                setNewSound(s.key);
+                playAlarmVoice(s.key);
+              }}
+              className={`px-3 py-1.5 rounded-md border text-xs font-mono transition-colors ${
+                newSound === s.key
+                  ? "border-gold bg-gold/10 text-gold"
+                  : "border-line text-ink-muted hover:text-gold hover:border-gold/50"
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -193,6 +237,15 @@ export default function AlarmPanel() {
                   </p>
                   {a.label && <p className="text-ink-muted text-xs mt-0.5">{a.label}</p>}
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleChangeSound(a)}
+                  title="Tap to cycle alarm sound"
+                  className="px-2.5 py-1.5 rounded-md border border-line text-ink-muted hover:text-gold hover:border-gold/50 text-xs font-mono transition-colors shrink-0"
+                >
+                  🔊 {soundLabel(a.sound)}
+                </button>
 
                 <button
                   type="button"
