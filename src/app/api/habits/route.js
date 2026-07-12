@@ -28,7 +28,7 @@ export async function POST(request) {
   const uid = await getSessionUserId();
   if (!uid) return NextResponse.json({ error: "Not logged in" }, { status: 401 });
 
-  const { name, emoji, time_from, time_to } = await request.json();
+  const { name, emoji, time_from, time_to, date } = await request.json();
   if (!name || !name.trim()) {
     return NextResponse.json({ error: "Habit name zaroori hai." }, { status: 400 });
   }
@@ -54,9 +54,11 @@ export async function POST(request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  // Use the caller's own local date, not the server's — see logs/toggle's
+  // route for why (server/browser calendar-day mismatch around midnight).
   await supabaseAdmin
     .from("logs")
-    .insert({ habit_id: habit.id, log_date: todayKey(), done: false });
+    .insert({ habit_id: habit.id, log_date: date || todayKey(), done: false });
 
   return NextResponse.json({ habit });
 }

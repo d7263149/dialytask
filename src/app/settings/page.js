@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import NavBar from "@/components/NavBar";
 import AddHabitForm from "@/components/AddHabitForm";
 import EmojiPickerButton from "@/components/EmojiPickerButton";
-import { formatTime12 } from "@/lib/dateUtils";
+import { formatTime12, todayKey } from "@/lib/dateUtils";
 
 const AUTO_ARRANGE_KEY = "kd_auto_arrange_habits";
 
@@ -99,7 +99,13 @@ export default function SettingsPage() {
     const res = await fetch("/api/habits", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, emoji, time_from: timeFrom || null, time_to: timeTo || null }),
+      body: JSON.stringify({
+        name,
+        emoji,
+        time_from: timeFrom || null,
+        time_to: timeTo || null,
+        date: todayKey(),
+      }),
     });
     const data = await res.json();
     if (!res.ok) {

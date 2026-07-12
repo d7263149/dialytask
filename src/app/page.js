@@ -51,7 +51,11 @@ export default function Home() {
       const me = await meRes.json();
       setUsername(me.user?.username || "");
       try {
-        await fetch("/api/ensure-today", { method: "POST" });
+        await fetch("/api/ensure-today", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ date: todayStr }),
+        });
       } catch {
         // network hiccup is fine, we still try to load what exists
       }
@@ -68,7 +72,7 @@ export default function Home() {
     const res = await fetch("/api/logs/toggle", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ habitId, done: newVal }),
+      body: JSON.stringify({ habitId, done: newVal, date: todayStr }),
     });
     if (!res.ok) {
       const data = await res.json();
